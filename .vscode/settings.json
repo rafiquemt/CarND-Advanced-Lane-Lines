@@ -1,8 +1,9 @@
 // Place your settings in this file to overwrite default and user settings.
 {
-    "python.pythonPath": "/Users/mrafique/miniconda3/envs/carnd-term1/bin/python",
+    "python.pythonPath": "/Users/mrafique/anaconda/envs/carnd-term1/bin/python",
     "python.autoComplete.extraPaths": [
-        "/Users/mrafique/miniconda3/envs/carnd-term1/lib/python3.5/site-packages"
+        "/Users/mrafique/anaconda/envs/carnd-term1/lib/python3.5/site-packages"
     ],
+    "python.linting.enabled": false,
     "files.trimTrailingWhitespace": true
 }
