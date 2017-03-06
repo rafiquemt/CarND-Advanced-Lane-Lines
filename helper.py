@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import pickle
 
+# diagnostic information
+# https://carnd-forums.udacity.com/questions/32706990/want-to-create-a-diagnostic-view-into-your-lane-finding-pipeline
 def abs_sobel_thresh(img, orient='x', thresh_min=0, thresh_max=255):
     dictx = {'x': 1, 'y': 0}
     dicty = {'x':0, 'y':1}

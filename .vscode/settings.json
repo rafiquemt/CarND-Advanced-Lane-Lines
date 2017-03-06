@@ -4,6 +4,6 @@
     "python.autoComplete.extraPaths": [
         "/Users/mrafique/anaconda/envs/carnd-term1/lib/python3.5/site-packages"
     ],
-    "python.linting.enabled": false,
+    "python.linting.enabled": true,
     "files.trimTrailingWhitespace": true
 }
