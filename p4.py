@@ -49,12 +49,57 @@ def test_calibration(image, mtx, dist, folderPath='camera_cal'):
     undist = cv2.undistort(img, mtx, dist, None, mtx)
     cv2.imwrite('output_images/calibrated_' + image, undist)
 
+def threshold_image(img):
+    # color transform and binary combine with color threshold and sobel_x threshold
+    return img
 
-def process_frame(img, mtx, dist):
-    undistorted_image = cv2.undistort(img, mtx, dist, None, mtx)
+def perspective_transform(img, M):
+    return img
 
-    final = undistorted_image
+def undistort_image(img, mtx, dist):
+    return cv2.undistort(img, mtx, dist, None, mtx)
+
+def get_unwarp_params(image_path):
+
+    # coordinates of road in normal image
+    # (184, 659) (581, 433) (684, 433) (1111, 659)
+
+    # transferring to:
+    # (150, 700) (150, 20) (1130, 20) (1130, 700)
+    src = np.float32([[184, 659], [581, 433], [684, 433], [1111, 659]])
+    # c) define 4 destination points dst = np.float32([[,],[,],[,],[,]])
+    dst = np.float32([[150, 700], [150, 20], [1130, 20], [1130, 700]])
+    # d) use cv2.getPerspectiveTransform() to get M, the transform matrix
+    M = cv2.getPerspectiveTransform(src, dst)
+    Minv = cv2.getPerspectiveTransform(dst, src)
+    return M, Minv
+
+def test_perspective():
+    images = glob.glob("test_images/*.*")
+
+def unwarp_image(img, M):
+    return img
+
+def process_frame(img, mtx, dist, M, Minv):
+    undistorted_image = undistort_image(img, mtx, dist)
+    threshold_image = threshold_image(undistorted_image)
+    unwarped_image = unwarp_image(threshold_image)
+    final = unwarped_image
     return final
+
+def get_calibration_data():
+    pickle_file = 'cal_data/cal_data.p'
+    print("Hello")
+    if os.path.exists(pickle_file):
+        print("loading pickle file for calibration", pickle_file)
+        x = pickle.load(open(pickle_file, "rb"))
+        mtx = x['mtx']
+        dist = x['dist']
+    else:
+        x, mtx, dist, x, x = calibrate_camera()
+        pickle.dump({'mtx': mtx, 'dist': dist}, open(pickle_file, 'wb'))
+    return mtx, dist
+
 def main():
     """
         The goals / steps of this project are the following:
@@ -67,16 +112,9 @@ def main():
         Warp the detected lane boundaries back onto the original image.
         Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
     """
-    pickle_file = 'cal_data/cal_data.p'
-    print("Hello")
-    if os.path.exists(pickle_file):
-        print("loading pickle file for calibration", pickle_file)
-        x = pickle.load(open(pickle_file, "rb"))
-        mtx = x['mtx']
-        dist = x['dist']
-    else:
-        x, mtx, dist, x, x = calibrate_camera()
-        pickle.dump({'mtx': mtx, 'dist': dist}, open(pickle_file, 'wb'))
+    mtx, dist = get_calibration_data()
+    M, Minv = get_unwarp_params("test_images/straight_lines2.jpg")
+
     test_calibration('calibration1.jpg', mtx, dist)
     test_calibration('calibration5.jpg', mtx, dist)
 
@@ -85,7 +123,7 @@ def main():
 
     for vid_file in test_videos:
         clip = VideoFileClip(vid_file)
-        output_clip = clip.fl_image(lambda img: process_frame(img, mtx, dist))
+        output_clip = clip.fl_image(lambda img: process_frame(img, mtx, dist, M, Minv))
         output_clip.write_videofile('output_'+vid_file, audio=False, threads=4)
 
 main()
