@@ -2,3 +2,5 @@
 cal_data/
 .vscode/tags
 .DS_Store
+.ropeproject/
+__pycache__/

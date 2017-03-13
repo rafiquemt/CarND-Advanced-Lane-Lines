@@ -13,6 +13,7 @@ import numpy as np
 from moviepy.editor import VideoFileClip
 
 import cv2
+import p4sobel as sobel
 
 
 def calibrate_camera(folder_path='camera_cal/calibration*.jpg'):
@@ -49,43 +50,88 @@ def test_calibration(image, mtx, dist, folderPath='camera_cal'):
     undist = cv2.undistort(img, mtx, dist, None, mtx)
     cv2.imwrite('output_images/calibrated_' + image, undist)
 
-def threshold_image(img):
-    # color transform and binary combine with color threshold and sobel_x threshold
-    return img
-
-def perspective_transform(img, M):
-    return img
 
 def undistort_image(img, mtx, dist):
     return cv2.undistort(img, mtx, dist, None, mtx)
 
-def get_unwarp_params(image_path):
+
+def get_warp_params():
 
     # coordinates of road in normal image
-    # (184, 659) (581, 433) (684, 433) (1111, 659)
-
+    src = np.float32([[184, 645], [583, 445], [697, 445], [1111, 645]])
     # transferring to:
-    # (150, 700) (150, 20) (1130, 20) (1130, 700)
-    src = np.float32([[184, 659], [581, 433], [684, 433], [1111, 659]])
-    # c) define 4 destination points dst = np.float32([[,],[,],[,],[,]])
     dst = np.float32([[150, 700], [150, 20], [1130, 20], [1130, 700]])
-    # d) use cv2.getPerspectiveTransform() to get M, the transform matrix
     M = cv2.getPerspectiveTransform(src, dst)
     Minv = cv2.getPerspectiveTransform(dst, src)
+    # return inverse which is used later
     return M, Minv
 
-def test_perspective():
-    images = glob.glob("test_images/*.*")
 
-def unwarp_image(img, M):
-    return img
+def warp_image(img, M):
+    warped = cv2.warpPerspective(
+        img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
+    return warped
+
+
+def test_perspective():
+    mtx, dist = get_calibration_data()
+    M, Minv = get_warp_params()
+    images = glob.glob("test_images/*.*")
+    for fname in images:
+        img = cv2.imread(fname)
+        undistorted = cv2.undistort(img, mtx, dist, None, mtx)
+        warped = warp_image(undistorted, M)
+        cv2.imwrite("output_images/unwarped_" + fname, warped)
+
+def test_threshold():
+    mtx, dist = get_calibration_data()
+    M, Minv = get_warp_params()
+    images = glob.glob("test_images/*.*")
+    for fname in images:
+        img = cv2.imread(fname)
+        undistorted = undistort_image(img, mtx, dist)
+        thresholded = color_sobel_threshold(undistorted)
+        warped = warp_image(thresholded, M)
+        cv2.imwrite("output_images/threshold_" + fname, thresholded)
+
+
+def color_sobel_threshold(img, s_thresh=(110, 255), sx_thresh=(20, 100)):
+    img = np.copy(img)
+    # Convert to HSV color space and separate the V channel
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HLS).astype(np.float)
+    l_channel = hsv[:, :, 1]
+    s_channel = hsv[:, :, 2]
+    # Sobel x
+    sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0)  # Take the derivative in x
+    # Absolute x derivative to accentuate lines away from horizontal
+    abs_sobelx = np.absolute(sobelx)
+    scaled_sobel = np.uint8(255 * abs_sobelx / np.max(abs_sobelx))
+
+    # Threshold x gradient
+    sxbinary = np.zeros_like(scaled_sobel)
+    sxbinary[(scaled_sobel >= sx_thresh[0]) &
+             (scaled_sobel <= sx_thresh[1])] = 1
+
+    # Threshold color channel
+    s_binary = np.zeros_like(s_channel)
+    s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
+
+    # combined = np.zeros_like(s_binary)
+    # combined[sxbinary == 1 | s_binary == 1] = 1
+    # Stack each channel
+    # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
+    # be beneficial to replace this channel with something else.
+    color_binary = np.dstack((sxbinary, sxbinary, s_binary))
+    return color_binary * 255
+
 
 def process_frame(img, mtx, dist, M, Minv):
     undistorted_image = undistort_image(img, mtx, dist)
-    threshold_image = threshold_image(undistorted_image)
-    unwarped_image = unwarp_image(threshold_image)
-    final = unwarped_image
+    thresholded_image = color_sobel_threshold(undistorted_image)
+    warped_image = warp_image(thresholded_image, M)
+    final = warped_image
     return final
+
 
 def get_calibration_data():
     pickle_file = 'cal_data/cal_data.p'
@@ -100,6 +146,7 @@ def get_calibration_data():
         pickle.dump({'mtx': mtx, 'dist': dist}, open(pickle_file, 'wb'))
     return mtx, dist
 
+
 def main():
     """
         The goals / steps of this project are the following:
@@ -113,17 +160,23 @@ def main():
         Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
     """
     mtx, dist = get_calibration_data()
-    M, Minv = get_unwarp_params("test_images/straight_lines2.jpg")
+    M, Minv = get_warp_params()
 
     test_calibration('calibration1.jpg', mtx, dist)
     test_calibration('calibration5.jpg', mtx, dist)
 
-
-    test_videos = ['project_video.mp4'] # 'challenge_video.mp4', 'harder_challenge_video.mp4'
+    # 'challenge_video.mp4', 'harder_challenge_video.mp4'
+    test_videos = ['project_video.mp4']
 
     for vid_file in test_videos:
         clip = VideoFileClip(vid_file)
-        output_clip = clip.fl_image(lambda img: process_frame(img, mtx, dist, M, Minv))
-        output_clip.write_videofile('output_'+vid_file, audio=False, threads=4)
+        output_clip = clip.fl_image(
+            lambda img: process_frame(img, mtx, dist, M, Minv))
+        output_clip.write_videofile(
+            'output_' + vid_file, audio=False, threads=4)
 
-main()
+
+
+# main()
+#test_perspective()
+test_threshold()
