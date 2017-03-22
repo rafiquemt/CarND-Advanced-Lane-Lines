@@ -141,6 +141,43 @@ def sliding_window_histogram_new(binary_warped):
     left_fit = np.polyfit(lefty, leftx, 2)
     right_fit = np.polyfit(righty, rightx, 2)
 
+    # Generate x and y values for plotting
+    ploty = np.linspace(0, binary_warped.shape[0] - 1, binary_warped.shape[0])
+    left_fitx = left_fit[0] * ploty**2 + left_fit[1] * ploty + left_fit[2]
+    right_fitx = right_fit[0] * ploty**2 + right_fit[1] * ploty + right_fit[2]
+
+    out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+    out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+
+    # Draw the lane onto the warped blank image
+    #result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
+    result = out_img
+    # result is the binary_warped image with window area liens drawn on it
+    return result
+
+
+def find_radius_of_curvature(ploty, leftx, rightx):
+    # Define y-value where we want radius of curvature
+    # I'll choose the maximum y-value, corresponding to the bottom of the image
+    y_eval = np.max(ploty)
+
+    # Define conversions in x and y from pixels space to meters
+    ym_per_pix = 30 / 720  # meters per pixel in y dimension
+    xm_per_pix = 3.7 / 700  # meters per pixel in x dimension
+
+    # Fit new polynomials to x,y in world space
+    left_fit_cr = np.polyfit(ploty * ym_per_pix, leftx * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(ploty * ym_per_pix, rightx * xm_per_pix, 2)
+    # Calculate the new radii of curvature
+    left_curverad = ((1 + (2 * left_fit_cr[0] * y_eval * ym_per_pix +
+                           left_fit_cr[1])**2)**1.5) / np.absolute(2 * left_fit_cr[0])
+    right_curverad = ((1 + (2 * right_fit_cr[0] * y_eval * ym_per_pix +
+                            right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
+
+    # TODO comment this out for actual video
+    print(left_curverad, 'left', right_curverad, 'right')
+    return left_curverad, right_curverad
+
 
 def calibrate_camera(folder_path='camera_cal/calibration*.jpg'):
     """
@@ -243,13 +280,13 @@ def color_sobel_threshold(img, s_thresh=(130, 175), sx_thresh=(20, 150)):
     s_binary = np.zeros_like(s_channel)
     s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
 
-    # combined = np.zeros_like(s_binary)
-    # combined[sxbinary == 1 | s_binary == 1] = 1
+    combined = np.zeros_like(s_binary)
+    combined[(s_binary == 1) | (sxbinary == 1)] = 1
     # Stack each channel
     # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
     # be beneficial to replace this channel with something else.
-    color_binary = np.dstack((sxbinary, sxbinary, s_binary))
-    return color_binary * 255
+    # color_binary = np.dstack((sxbinary, sxbinary, s_binary))
+    return combined
 
 
 def process_frame(img, mtx, dist, M, Minv):
@@ -258,6 +295,19 @@ def process_frame(img, mtx, dist, M, Minv):
     warped_image = warp_image(thresholded_image, M)
     final = warped_image
     return final
+
+
+def test_full_pipeline():
+    mtx, dist = get_calibration_data()
+    M, Minv = get_warp_params()
+    images = glob.glob("test_images/*.*")
+    for fname in images:
+        img = cv2.imread(fname)
+        undistorted = undistort_image(img, mtx, dist)
+        thresholded = color_sobel_threshold(undistorted)
+        warped = warp_image(thresholded, M)
+        warped_with_lines = sliding_window_histogram_new(warped)
+        cv2.imwrite("output_images/lines_" + fname, warped_with_lines)
 
 
 def get_calibration_data():
@@ -306,4 +356,5 @@ def main():
 
 # main()
 # test_perspective()
-test_threshold()
+# test_threshold()
+test_full_pipeline()
