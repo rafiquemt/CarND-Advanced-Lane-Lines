@@ -2,7 +2,7 @@
    Project 4 - Advanced Lane Finding
    Tariq Rafique
 """
-# pylint: disable=I0011,E1101,C0111,C0103,C0301,W0611,R0914,R0902,R0903
+# pylint: disable=I0011,E1101,C0111,C0103,C0301,W0611,R0914,R0902,R0903,R0913
 import glob
 import os.path
 import pickle
@@ -153,6 +153,28 @@ def sliding_window_histogram_new(binary_warped):
     #result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
     result = out_img
     # result is the binary_warped image with window area liens drawn on it
+    return result, left_fitx, right_fitx, ploty
+
+
+def draw_lines(raw_image, warped, Minv, left_fitx, right_fitx, ploty):
+    # Create an image to draw the lines on
+    warp_zero = np.zeros_like(warped).astype(np.uint8)
+    color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+
+    # Recast the x and y points into usable format for cv2.fillPoly()
+    pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+    pts_right = np.array(
+        [np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+    pts = np.hstack((pts_left, pts_right))
+    # Draw the lane onto the warped blank image
+    cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+
+    # Warp the blank back to original image space using inverse perspective
+    # matrix (Minv)
+    newwarp = cv2.warpPerspective(
+        color_warp, Minv, (raw_image.shape[1], raw_image.shape[0]))
+    # Combine the result with the original image
+    result = cv2.addWeighted(raw_image, 1, newwarp, 0.3, 0)
     return result
 
 
@@ -290,10 +312,16 @@ def color_sobel_threshold(img, s_thresh=(130, 175), sx_thresh=(20, 150)):
 
 
 def process_frame(img, mtx, dist, M, Minv):
-    undistorted_image = undistort_image(img, mtx, dist)
-    thresholded_image = color_sobel_threshold(undistorted_image)
-    warped_image = warp_image(thresholded_image, M)
-    final = warped_image
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    undistorted = undistort_image(img, mtx, dist)
+    thresholded = color_sobel_threshold(undistorted)
+    warped = warp_image(thresholded, M)
+    warped_with_lines, left_fitx, right_fitx, ploty = sliding_window_histogram_new(
+        warped)
+    img_with_lines = draw_lines(
+        undistorted, warped, Minv, left_fitx, right_fitx, ploty)
+
+    final = img_with_lines
     return final
 
 
@@ -306,8 +334,12 @@ def test_full_pipeline():
         undistorted = undistort_image(img, mtx, dist)
         thresholded = color_sobel_threshold(undistorted)
         warped = warp_image(thresholded, M)
-        warped_with_lines = sliding_window_histogram_new(warped)
+        warped_with_lines, left_fitx, right_fitx, ploty = sliding_window_histogram_new(
+            warped)
+        img_with_lines = draw_lines(
+            undistorted, warped, Minv, left_fitx, right_fitx, ploty)
         cv2.imwrite("output_images/lines_" + fname, warped_with_lines)
+        cv2.imwrite("output_images/final_" + fname, img_with_lines)
 
 
 def get_calibration_data():
