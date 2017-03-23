@@ -4,3 +4,4 @@ cal_data/
 .DS_Store
 .ropeproject/
 __pycache__/
+*av*mp4

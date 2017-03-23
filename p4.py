@@ -37,6 +37,14 @@ class Line():
         self.allx = None
         # y values for detected line pixels
         self.ally = None
+        # history of all fits
+        self.all_fits = []
+
+    def add_fit(self, new_fit):
+        self.current_fit = new_fit
+        self.all_fits.append(new_fit)
+        # self.best_fit = np.mean(self.all_fits[-5:], axis=0)
+        self.best_fit = new_fit
 
 
 def sliding_window_histogram_new(binary_warped, left, right):
@@ -45,9 +53,9 @@ def sliding_window_histogram_new(binary_warped, left, right):
     # Set height of windows
     window_height = np.int(binary_warped.shape[0] / nwindows)
     # Set the width of the windows +/- margin
-    margin = 100
+    margin = 50
     # Set minimum number of pixels found to recenter window
-    minpix = 50
+    minpix = 25
     # Create empty lists to receive left and right lane pixel indices
     left_lane_inds = []
     right_lane_inds = []
@@ -60,7 +68,7 @@ def sliding_window_histogram_new(binary_warped, left, right):
     # Create an output image to draw on and  visualize the result
     out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
 
-    if left.detected is False and right.detected is False:
+    if should_restart_line_search(left, right):
         # Assuming you have created a warped binary image called "binary_warped"
         # Take a histogram of the bottom half of the image
         histogram = np.sum(
@@ -90,10 +98,10 @@ def sliding_window_histogram_new(binary_warped, left, right):
             cv2.rectangle(out_img, (win_xright_low, win_y_low),
                           (win_xright_high, win_y_high), (0, 255, 0), 2)
             # Identify the nonzero pixels in x and y within the window
-            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (
-                nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
-            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (
-                nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                              (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                               (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
             # Append these indices to the lists
             left_lane_inds.append(good_left_inds)
             right_lane_inds.append(good_right_inds)
@@ -108,9 +116,14 @@ def sliding_window_histogram_new(binary_warped, left, right):
         left_lane_inds = np.concatenate(left_lane_inds)
         right_lane_inds = np.concatenate(right_lane_inds)
     else:
-
-        left_lane_inds = ((nonzerox > (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] - margin)) & (nonzerox < (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] + margin)))
-        right_lane_inds = ((nonzerox > (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] - margin)) & (nonzerox < (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] + margin)))
+        left_fit = left.best_fit
+        right_fit = right.best_fit
+        left_lane_inds = (
+            (nonzerox > (left_fit[0] * (nonzeroy**2) + left_fit[1] * nonzeroy + left_fit[2] - margin)) &
+            (nonzerox < (left_fit[0] * (nonzeroy**2) + left_fit[1] * nonzeroy + left_fit[2] + margin)))
+        right_lane_inds = (
+            (nonzerox > (right_fit[0] * (nonzeroy**2) + right_fit[1] * nonzeroy + right_fit[2] - margin)) &
+            (nonzerox < (right_fit[0] * (nonzeroy**2) + right_fit[1] * nonzeroy + right_fit[2] + margin)))
 
     # Extract left and right line pixel positions
     leftx = nonzerox[left_lane_inds]
@@ -121,6 +134,11 @@ def sliding_window_histogram_new(binary_warped, left, right):
     # Fit a second order polynomial to each
     left_fit = np.polyfit(lefty, leftx, 2)
     right_fit = np.polyfit(righty, rightx, 2)
+    left.add_fit(left_fit)
+    right.add_fit(right_fit)
+
+    left.detected = True
+    right.detected = True
 
     # Generate x and y values for plotting
     ploty = np.linspace(0, binary_warped.shape[0] - 1, binary_warped.shape[0])
@@ -135,6 +153,9 @@ def sliding_window_histogram_new(binary_warped, left, right):
     result = out_img
     # result is the binary_warped image with window area liens drawn on it
     return result, left_fitx, right_fitx, ploty
+
+def should_restart_line_search(left, right):
+    return left.detected is False and right.detected is False
 
 
 def draw_lines(raw_image, warped, Minv, left_fitx, right_fitx, ploty):
@@ -177,7 +198,7 @@ def find_radius_of_curvature(ploty, leftx, rightx):
     right_curverad = ((1 + (2 * right_fit_cr[0] * y_eval * ym_per_pix +
                             right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
 
-    # TODO comment this out for actual video
+    # TODO Log curvature
     print(left_curverad, 'left', right_curverad, 'right')
     return left_curverad, right_curverad
 
@@ -241,7 +262,7 @@ def warp_image(img, M):
 
 def test_perspective():
     mtx, dist = get_calibration_data()
-    M, Minv = get_warp_params()
+    M = get_warp_params()
     images = glob.glob("test_images/*.*")
     for fname in images:
         img = cv2.imread(fname)
@@ -252,22 +273,22 @@ def test_perspective():
 
 def test_threshold():
     mtx, dist = get_calibration_data()
-    M, Minv = get_warp_params()
+    M = get_warp_params()
     images = glob.glob("test_images/*.*")
     for fname in images:
         img = cv2.imread(fname)
         undistorted = undistort_image(img, mtx, dist)
-        thresholded = color_sobel_threshold(undistorted)
+        thresholded = color_sobel_threshold(undistorted) * 255
         warped = warp_image(thresholded, M)
         cv2.imwrite("output_images/threshold_" + fname, warped)
 
 
-def color_sobel_threshold(img, s_thresh=(130, 175), sx_thresh=(20, 150)):
+def color_sobel_threshold(img, s_thresh=(130, 175), sx_thresh=(20, 150), colored=False):
     img = np.copy(img)
     # Convert to HSV color space and separate the V channel
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HLS).astype(np.float)
-    l_channel = hsv[:, :, 1]
-    s_channel = hsv[:, :, 2]
+    hls = cv2.cvtColor(img, cv2.COLOR_BGR2HLS).astype(np.float)
+    l_channel = hls[:, :, 1]
+    s_channel = hls[:, :, 2]
     # Sobel x
     sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0)  # Take the derivative in x
     # Absolute x derivative to accentuate lines away from horizontal
@@ -288,8 +309,11 @@ def color_sobel_threshold(img, s_thresh=(130, 175), sx_thresh=(20, 150)):
     # Stack each channel
     # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
     # be beneficial to replace this channel with something else.
-    # color_binary = np.dstack((sxbinary, sxbinary, s_binary))
-    return combined
+    color_binary = np.dstack((sxbinary, sxbinary, s_binary))
+    if colored is True:
+        return color_binary, combined
+    else:
+        return combined
 
 
 def process_frame(img, mtx, dist, M, Minv, left, right):
@@ -308,19 +332,22 @@ def test_full_pipeline():
     mtx, dist = get_calibration_data()
     M, Minv = get_warp_params()
     images = glob.glob("test_images/*.*")
-    left = Line()
-    right = Line()
+
     for fname in images:
+        left = Line()
+        right = Line()
         img = cv2.imread(fname)
         undistorted = undistort_image(img, mtx, dist)
-        thresholded = color_sobel_threshold(undistorted)
-        warped = warp_image(thresholded, M)
+        thresholded, thresholded_combined = color_sobel_threshold(undistorted, colored=True)
+        warped = warp_image(thresholded_combined, M)
         warped_with_lines, left_fitx, right_fitx, ploty = sliding_window_histogram_new(
             warped, left, right)
         img_with_lines = draw_lines(
             undistorted, warped, Minv, left_fitx, right_fitx, ploty)
         cv2.imwrite("output_images/lines_" + fname, warped_with_lines)
+        cv2.imwrite("output_images/threshold_" + fname, thresholded * 255)
         cv2.imwrite("output_images/final_" + fname, img_with_lines)
+        cv2.imwrite("output_images/undistorted_" + fname, undistorted)
 
 
 def get_calibration_data():
@@ -352,11 +379,12 @@ def main():
     mtx, dist = get_calibration_data()
     M, Minv = get_warp_params()
 
-    test_calibration('calibration1.jpg', mtx, dist)
-    test_calibration('calibration5.jpg', mtx, dist)
+    # test_calibration('calibration1.jpg', mtx, dist)
+    # test_calibration('calibration5.jpg', mtx, dist)
 
     # 'challenge_video.mp4', 'harder_challenge_video.mp4'
-    test_videos = ['smaller_video.mp4']
+    test_videos = ['project_video.mp4']
+    #test_videos = ['smaller_first_bridge.mp4']
     left = Line()
     right = Line()
     for vid_file in test_videos:
@@ -367,10 +395,8 @@ def main():
             'output_' + vid_file, audio=False, threads=4)
 
 
-# main()
 # test_perspective()
 # test_threshold()
 # test_full_pipeline()
-
 
 main()
