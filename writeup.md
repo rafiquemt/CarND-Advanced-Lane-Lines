@@ -15,9 +15,9 @@ The goals / steps of this project are the following:
 
 [camera_calibrate]: ./writeup/calibration.png "Undistorted"
 [road_transformed]: ./writeup/camera_undistortion.png "Road Transformed"
-[image3]: ./examples/binary_combo_example.jpg "Binary Example"
-[image4]: ./examples/warped_straight_lines.jpg "Warp Example"
-[image5]: ./examples/color_fit_lines.jpg "Fit Visual"
+[threshold_image]: ./output_images/threshold_test_images/test3.jpg "Binary Example"
+[warped_image]: ./writeup/warped_image.png "Warp Example"
+[fitted_lanes]: ./writeup/fitted_lanes.png "Fit Visual"
 [image6]: ./examples/example_output.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
 
@@ -53,43 +53,40 @@ Note that this image isn't from the input project video, but it is from the `tes
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 I used a combination of color and gradient thresholds to generate a binary image.  The color space was converted into HLS. The S channel was used for color thresholding. The L channel was used for x-gradient magnitude thresholding. The code can be found in the `color_sobel_threshold` method in `p4.py` on line `286`.
 
-![alt text][image3]
+![alt text][threshold_image]
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
+The first step is to calculate the warping parameters for the perspective transform. This is done in `p4.py` in the `get_warp_params` method on line 245. The method uses a hardcoded set of points from a camera image. The `src` points are in the normal image and the `dst` points are intended to be transformed so that we get the perspective of looking top down at the road. The points are passed on to `cv2.getPerspectiveTransform` to get the transformation. It also calculates the inverse perspective transform to go from warped to normal points so that I could plot the lines on the undistorted image.
 
 ```
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
-
+# coordinates of road in normal image
+src = np.float32([[184, 645], [583, 445], [697, 445], [1111, 645]])
+# transferring to:
+dst = np.float32([[150, 700], [150, 20], [1130, 20], [1130, 700]])
 ```
 This resulted in the following source and destination points:
 
 | Source        | Destination   |
 |:-------------:|:-------------:|
-| 585, 460      | 320, 0        |
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+| 184, 645      | 150, 700      |
+| 583, 445      | 150, 20       |
+| 697, 445      | 1130, 20      |
+| 1111, 645     | 1130, 700     |
 
 I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
 
-![alt text][image4]
+![alt text][warped_image]
 
-####4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
+#### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+I split the image vertically into 9 windows of width 50 and started from the bottom. The starting point for the bottom window was determined by taking histogram in the lower half of the rectified and thresholded binary image to find x coordinates where the pixel density is highest. The x-position of the next window moving up is taken as the mean x-coordinate of non-zero pixels if a certain critical threshold is met. This helps slide the window towards the the center of the lane as it curbes
 
-![alt text][image5]
+This process of sliding windows is done for the left and right halves of the images so that we can find the left and right lanes.
+
+The code can be found in `p4.py` in the `sliding_window_histogram_new` method on line 50. An image showing the resulting lines found and the fitted polynomial is plotted below
+
+![alt text][fitted_lanes]
 
 ####5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 

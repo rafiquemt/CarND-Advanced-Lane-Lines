@@ -137,6 +137,11 @@ def sliding_window_histogram_new(binary_warped, left, right):
     left.add_fit(left_fit)
     right.add_fit(right_fit)
 
+    left.allx = leftx
+    left.ally = lefty
+    right.allx = rightx
+    right.ally = righty
+
     left.detected = True
     right.detected = True
 
@@ -148,10 +153,8 @@ def sliding_window_histogram_new(binary_warped, left, right):
     out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
     out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
 
-    # Draw the lane onto the warped blank image
-    #result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
     result = out_img
-    # result is the binary_warped image with window area liens drawn on it
+
     return result, left_fitx, right_fitx, ploty
 
 def should_restart_line_search(left, right):
@@ -180,10 +183,12 @@ def draw_lines(raw_image, warped, Minv, left_fitx, right_fitx, ploty):
     return result
 
 
-def find_radius_of_curvature(ploty, leftx, rightx):
+def find_radius_of_curvature(ploty, left, right):
     # Define y-value where we want radius of curvature
     # I'll choose the maximum y-value, corresponding to the bottom of the image
     y_eval = np.max(ploty)
+    leftx = left.allx
+    rightx = right.allx
 
     # Define conversions in x and y from pixels space to meters
     ym_per_pix = 30 / 720  # meters per pixel in y dimension
@@ -397,6 +402,6 @@ def main():
 
 # test_perspective()
 # test_threshold()
-# test_full_pipeline()
+test_full_pipeline()
 
-main()
+# main()
