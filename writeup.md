@@ -84,6 +84,8 @@ I split the image vertically into 9 windows of width 50 and started from the bot
 
 This process of sliding windows is done for the left and right halves of the images so that we can find the left and right lanes.
 
+Finally the points points that are found through the sliding window search are fitted to a polynomial using `np.polyfit`.
+
 The code can be found in `p4.py` in the `sliding_window_histogram_new` method on line 50. An image showing the resulting lines found and the fitted polynomial is plotted below
 
 ![alt text][fitted_lanes]
