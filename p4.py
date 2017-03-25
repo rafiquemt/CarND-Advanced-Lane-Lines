@@ -28,9 +28,9 @@ class Line():
         # polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
         # radius of curvature of the line in some units
-        self.radius_of_curvature = None
+        self.radius_of_curvature = []
         # distance in meters of vehicle center from the line
-        self.line_base_pos = None
+        self.line_base_pos = []
         # difference in fit coefficients between last and new fits
         self.diffs = np.array([0, 0, 0], dtype='float')
         # x values for detected line pixels
@@ -43,8 +43,11 @@ class Line():
     def add_fit(self, new_fit):
         self.current_fit = new_fit
         self.all_fits.append(new_fit)
-        # self.best_fit = np.mean(self.all_fits[-5:], axis=0)
-        self.best_fit = new_fit
+        self.best_fit = np.mean(self.all_fits[-5:], axis=0)
+        #self.best_fit =
+
+    def get_curvature(self):
+        return np.mean(self.radius_of_curvature[-5:])
 
 
 def sliding_window_histogram_new(binary_warped, left, right):
@@ -72,7 +75,7 @@ def sliding_window_histogram_new(binary_warped, left, right):
         # Assuming you have created a warped binary image called "binary_warped"
         # Take a histogram of the bottom half of the image
         histogram = np.sum(
-            binary_warped[binary_warped.shape[0] / 2:, :], axis=0)
+            binary_warped[3*binary_warped.shape[0] / 4:, :], axis=0)
         # Find the peak of the left and right halves of the histogram
         # These will be the starting point for the left and right lines
         midpoint = np.int(histogram.shape[0] / 2)
@@ -183,29 +186,45 @@ def draw_lines(raw_image, warped, Minv, left_fitx, right_fitx, ploty):
     return result
 
 
-def find_radius_of_curvature(ploty, left, right):
+def draw_radius_of_curvature_center_location(img, left, right, ploty):
     # Define y-value where we want radius of curvature
     # I'll choose the maximum y-value, corresponding to the bottom of the image
     y_eval = np.max(ploty)
     leftx = left.allx
+    lefty = left.ally
+
     rightx = right.allx
+    righty = right.ally
 
     # Define conversions in x and y from pixels space to meters
-    ym_per_pix = 30 / 720  # meters per pixel in y dimension
-    xm_per_pix = 3.7 / 700  # meters per pixel in x dimension
+    ym_per_pix = 46 / 720  # meters per pixel in y dimension
+    xm_per_pix = 3.7 / 711  # meters per pixel in x dimension
 
     # Fit new polynomials to x,y in world space
-    left_fit_cr = np.polyfit(ploty * ym_per_pix, leftx * xm_per_pix, 2)
-    right_fit_cr = np.polyfit(ploty * ym_per_pix, rightx * xm_per_pix, 2)
+    left_fit_cr = np.polyfit(lefty * ym_per_pix, leftx * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(righty * ym_per_pix, rightx * xm_per_pix, 2)
     # Calculate the new radii of curvature
     left_curverad = ((1 + (2 * left_fit_cr[0] * y_eval * ym_per_pix +
                            left_fit_cr[1])**2)**1.5) / np.absolute(2 * left_fit_cr[0])
     right_curverad = ((1 + (2 * right_fit_cr[0] * y_eval * ym_per_pix +
                             right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
 
-    # TODO Log curvature
-    print(left_curverad, 'left', right_curverad, 'right')
-    return left_curverad, right_curverad
+    left.radius_of_curvature.append(left_curverad)
+    right.radius_of_curvature.append(right_curverad)
+
+    curvature_average = (left.get_curvature() + right.get_curvature()) / 2
+
+    cv2.putText(img, "Estimated curvature: {:6.2f}m".format(curvature_average),
+                (200, 50), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5, thickness=3, color=(0, 0, 0))
+    x_left = left.best_fit[0]*y_eval**2 + left.best_fit[1]*y_eval + left.best_fit[2]
+    x_right = right.best_fit[0]*y_eval**2 + right.best_fit[1]*y_eval + right.best_fit[2]
+    mid_lane = x_left + ((x_right - x_left)/2)
+    camera_offset_from_mid = ((img.shape[1] / 2) - mid_lane) * xm_per_pix
+
+    cv2.putText(img, "Offset {:6.2f}m".format(camera_offset_from_mid),
+                (400, 100), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5, thickness=3, color=(0, 0, 0))
+
+    return img
 
 
 def calibrate_camera(folder_path='camera_cal/calibration*.jpg'):
@@ -250,9 +269,9 @@ def undistort_image(img, mtx, dist):
 def get_warp_params():
 
     # coordinates of road in normal image
-    src = np.float32([[184, 645], [583, 445], [697, 445], [1111, 645]])
+    src = np.float32([[289, 661], [595, 450], [684, 450], [1017, 661]])
     # transferring to:
-    dst = np.float32([[150, 700], [150, 20], [1130, 20], [1130, 700]])
+    dst = np.float32([[250, 700], [250, 20], [950, 20], [950, 700]])
     M = cv2.getPerspectiveTransform(src, dst)
     Minv = cv2.getPerspectiveTransform(dst, src)
     # return inverse which is used later
@@ -267,7 +286,7 @@ def warp_image(img, M):
 
 def test_perspective():
     mtx, dist = get_calibration_data()
-    M = get_warp_params()
+    M, Minv = get_warp_params()
     images = glob.glob("test_images/*.*")
     for fname in images:
         img = cv2.imread(fname)
@@ -329,7 +348,8 @@ def process_frame(img, mtx, dist, M, Minv, left, right):
         warped, left, right)
     img_with_lines = draw_lines(
         undistorted, warped, Minv, left_fitx, right_fitx, ploty)
-    final = img_with_lines
+    img_annotated = draw_radius_of_curvature_center_location(img_with_lines, left, right, ploty)
+    final = img_annotated
     return final
 
 
@@ -402,6 +422,6 @@ def main():
 
 # test_perspective()
 # test_threshold()
-test_full_pipeline()
+# test_full_pipeline()
 
-# main()
+main()
