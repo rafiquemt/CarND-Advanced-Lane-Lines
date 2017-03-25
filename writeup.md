@@ -88,6 +88,10 @@ Finally the points points that are found through the sliding window search are f
 
 The code can be found in `p4.py` in the `sliding_window_histogram_new` method on line 53. An image showing the resulting lines found and the fitted polynomial is plotted below
 
+Once the a line is found, I simply searched around a smaller margin of the previously found lane regions.
+
+To reduce fluctuations, the lane fitting was average out over the last 5 frames. This prevented jumping around of the lane estimate if the image was degraded from shadows or bad road conditions for a little while.
+
 ![alt text][fitted_lanes]
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
@@ -127,11 +131,13 @@ One of the first things was doing the perspective warp. I realized that you don'
 
 The thresholding using Sobelx and HLS color space was done through trial and error to find thresholds that captured the lane without introducing too much noise from other shadows or markings in the middle of the lane
 
-Lane finding was done by using a sliding window to find regions with the highest pixel density. It was important to tweak the window width and height to ensure that
+Lane finding was done by using a sliding window to find regions with the highest pixel density. It was important to tweak the window width and height to ensure that it was possible to follow sharply curving lanes. If the window was too narrow, it was harder to follow the lane curves and finding them in the next window search. If the window was too wide, it would find other edges.
 
+*Possible Failures*
 
-** Fail
-* Sharp curves
-* shadows for extended period of time
-* markings close to the lane or road changing
+If the curves are extremely sharp, then even the window search approach won't be able to follow the lane fully. It could possibly be solved by expanding the window search area when you know that the lane is curving more previously.
+
+This system currently assumes that the first frame provided to the system will be a good visible lane. That may not always be the case so it needs to recognize that and reset the lane detection process whenever it thinks that the lane estimate was bad.
+
+Markings close to the lane or road with patches close to the lanes will confuse the system. This can possibly be dealt with by using narrow margin of search around the previous lane, but then that makes it harder to following curves
 
